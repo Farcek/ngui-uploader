@@ -1,0 +1,22 @@
+{
+  "name": "ngui-uploader",
+  "authors": [
+    "Farcek <farcek@gmail.com>"
+  ],
+  "description": "ngui module",
+  "main": "dist/auth.js",
+  "license": "MIT",
+  "homepage": "",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "jquery": "^3.1.1",
+    "angular": "^1.5.8",
+    "flow.js": "^2.11.2"
+  }
+}

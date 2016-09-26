@@ -1,0 +1,42 @@
+<html ng-app="demo">
+
+<head>
+    <title> uploader basic demo </title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u"
+        crossorigin="anonymous">
+
+    <!-- Optional theme -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css" integrity="sha384-rHyoN1iRsVXV4nD0JutlnGaslCJuC7uwjduW9SVrLvRYooPp2bWYgmgJQIXwl/Sp"
+        crossorigin="anonymous">
+
+    <script src="/bower_components/jquery/dist/jquery.js"></script>
+    <script src="/bower_components/angular/angular.js"></script>
+    <script src="/bower_components/flow.js/dist/flow.js"></script>
+    <script src="/dist/uploader.js"></script>
+    <script src="/demo/basic.js"></script>
+</head>
+
+<body ng-controller="ctrlMain as $$">
+    <div class="container">
+        <form>
+            <div class="form-group">
+                <label for="exampleInputEmail1">Email address</label>
+                <input type="email" class="form-control" id="exampleInputEmail1" placeholder="Email" ng-model="$$.mdl.name">
+            </div>
+
+
+            <div class="form-group">
+                <div ngui-uploader="$$.myUploader" ng-model="$$.mdl.img"
+                upload1-uri="'/upload/'+$$.mdl.id" accept-file="image/*"  ></div>
+            </div>
+
+
+            <button type="submit" class="btn btn-default">Submit</button>
+        </form>
+    </div>
+
+</body>
+
+</html>
