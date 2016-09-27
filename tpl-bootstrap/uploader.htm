@@ -1,15 +1,12 @@
 <div class="row">
     <div class="col-sm-4">
-        <img ng-src="{{$data.previewUri}}" alt="..." class="img-responsive img-rounded">
+        <img ng-src="{{$data.previewUri}}" class="img-responsive img-rounded">
     </div>
     <div class="col-sm-8">
-
-        <label for="exampleInputFile">File input</label>
-        <input type="file" id="exampleInputFile" class="flow-assign">
-        <p class="help-block">Pleace choose image file</p>
-        <div class="progress">
+        <input type="file" class="form-control flow-assign">
+        
+        <div class="progress" style="height:2px">
             <div class="progress-bar" role="progressbar" style="width: {{$data.uploadProcess*100}}%;">
-
             </div>
         </div>
         <div ng-if="$data.uploadSuccess" class="alert alert-success">

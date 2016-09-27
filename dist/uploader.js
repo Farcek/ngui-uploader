@@ -3,43 +3,61 @@ var ngui;
     var uploader;
     (function (uploader) {
         var UploaderService = (function () {
-            function UploaderService(options) {
+            function UploaderService(options, uploaderConfig) {
                 this.options = options;
+                this.uploaderConfig = uploaderConfig;
+                this.cacheIndex = 1;
             }
             UploaderService.prototype.responceParse = function (responce) {
                 if (this.options && this.options.responseParser) {
                     return this.options.responseParser(responce);
                 }
+                if (this.uploaderConfig && this.uploaderConfig.responseParser) {
+                    return this.uploaderConfig.responseParser(responce);
+                }
                 return responce;
             };
-            UploaderService.prototype.previewUri = function (modelValue, attrUri) {
-                if (this.options && this.options.previewUriResolver) {
-                    var uri = this.options.previewUriResolver(modelValue, attrUri);
-                    if (uri)
-                        return uri;
+            UploaderService.prototype.previewUri = function (modelValue, path) {
+                if (modelValue) {
+                    if (this.options && this.options.previewUriResolver) {
+                        var uri = this.options.previewUriResolver(modelValue, path, this.cacheIndex);
+                        if (uri)
+                            return uri;
+                    }
+                    if (this.uploaderConfig && this.uploaderConfig.previewUriResolver) {
+                        var uri = this.uploaderConfig.previewUriResolver(modelValue, path, this.cacheIndex);
+                        if (uri)
+                            return uri;
+                    }
+                    return this.uploaderConfig.baseUploadingTargetUri + '/' + path + '/' + modelValue;
                 }
-                if (attrUri) {
-                    return attrUri;
-                }
-                return modelValue;
+                return this.uploaderConfig.emptyImageUri;
             };
-            UploaderService.prototype.uploadUriResolve = function (modelValue, attrUri) {
+            UploaderService.prototype.uploadUriResolve = function (modelValue, path, uploadStatic) {
                 if (this.options && this.options.uploadUriResolver) {
-                    var uri = this.options.uploadUriResolver(modelValue, attrUri);
+                    var uri = this.options.uploadUriResolver(modelValue, path);
                     if (uri)
                         return uri;
-                }
-                if (attrUri) {
-                    return attrUri;
                 }
                 if (this.options && this.options.target) {
                     return this.options.target;
                 }
-                throw new Error('Not found function');
+                if (uploadStatic) {
+                    return this.uploaderConfig.baseUploadingTargetUri + '/' + path + '/' + modelValue;
+                }
+                else {
+                    return this.uploaderConfig.baseUploadingTargetUri + '/' + path;
+                }
             };
             UploaderService.prototype.onError = function (err) {
                 if (this.options && this.options.onError) {
                     this.options.onError(err);
+                }
+            };
+            UploaderService.prototype.onUploadSuccess = function () {
+                this.cacheIndex++;
+                if (this.options && this.options.onUploadSaccess) {
+                    this.options.onUploadSaccess();
                 }
             };
             return UploaderService;
@@ -47,9 +65,9 @@ var ngui;
         uploader.UploaderService = UploaderService;
         var UploaderServiceFactory;
         (function (UploaderServiceFactory) {
-            function factory($nguiUploaderConfig) {
+            function factory(nguiUploaderConfig) {
                 return function (options) {
-                    return new UploaderService(options);
+                    return new UploaderService(options, nguiUploaderConfig);
                 };
             }
             UploaderServiceFactory.factory = factory;
@@ -65,18 +83,21 @@ var ngui;
                     },
                     scope: {
                         uploader: '=nguiUploader',
-                        uploadUri: '=',
+                        uploadPath: '=',
+                        uploadStatic: '=',
                         acceptFile: '@',
                         uploadFieldName: '@'
                     },
                     link: function ($scope, $ele, $attr, $ngModel) {
-                        console.log('$ngModel', $ngModel);
                         var uploaderService = $scope.uploader || $nguiUploaderServiceFactory();
                         var flowOptions = {
                             testChunks: false,
                             singleFile: true,
                             fileParameterName: $scope.uploadFieldName || uploaderService.options && uploaderService.options.uploadFieldName || 'file'
                         };
+                        if ($nguiUploaderConfig.flowOptioner) {
+                            $nguiUploaderConfig.flowOptioner(flowOptions);
+                        }
                         var flow = new Flow(flowOptions);
                         var $data = $scope.$data = {
                             uploadProcess: 0,
@@ -84,11 +105,11 @@ var ngui;
                             uploadError: false,
                             uploadErrorMessage: null,
                             get previewUri() {
-                                return uploaderService.previewUri($ngModel.$modelValue, $scope.uploadUri);
+                                return uploaderService.previewUri($ngModel.$modelValue, $scope.uploadPath);
                             }
                         };
                         flow.on('filesSubmitted', function (files, event) {
-                            var uri = uploaderService.uploadUriResolve($ngModel.$modelValue, $scope.uploadUri);
+                            var uri = uploaderService.uploadUriResolve($ngModel.$modelValue, $scope.uploadPath, $scope.uploadStatic);
                             if (uri) {
                                 flow.opts['target'] = uri;
                                 flow.upload();
@@ -104,6 +125,7 @@ var ngui;
                         flow.on('fileSuccess', function (file, message) {
                             $data.uploadSuccess = true;
                             $ngModel.$setViewValue(uploaderService.responceParse(message));
+                            uploaderService.onUploadSuccess();
                             $scope.$apply();
                         });
                         flow.on('fileError', function (file, message) {
@@ -114,7 +136,6 @@ var ngui;
                             $scope.$apply();
                         });
                         var doms = $ele.find('.flow-assign').get();
-                        console.log('$scope.acceptType');
                         flow.assignBrowse(doms, false, true, {
                             accept: $scope.acceptFile
                         });
@@ -129,15 +150,58 @@ var ngui;
             .factory('$nguiUploaderServiceFactory', UploaderServiceFactory.factory)
             .provider("$nguiUploaderConfig", function () {
             var baseTemplateUrl = "/ngui";
+            var baseUploadingTargetUri = "/upload";
+            var emptyImageUri = "/empty.jpg";
+            var flowOptioner = null;
+            var responseParser = null;
+            var previewUriResolver = null;
             var self = {
                 setBaseTemplateUrl: function (url) {
                     baseTemplateUrl = url;
+                    return self;
+                },
+                setBaseUploadingTargetUri: function (uri) {
+                    baseUploadingTargetUri = uri;
+                    return self;
+                },
+                setEmptyImageUri: function (uri) {
+                    emptyImageUri = uri;
+                    return self;
+                },
+                setFlowOptioner: function (optioner) {
+                    flowOptioner = optioner;
+                    return self;
+                },
+                setResponseParser: function (parser) {
+                    responseParser = parser;
+                    return self;
+                },
+                setPreviewUriResolver: function (resolver) {
+                    previewUriResolver = resolver;
                     return self;
                 },
                 $get: function () {
                     return {
                         get baseTemplateUrl() {
                             return baseTemplateUrl;
+                        },
+                        get baseUploadingTargetUri() {
+                            if (typeof (baseUploadingTargetUri) === 'function') {
+                                return baseUploadingTargetUri();
+                            }
+                            return baseUploadingTargetUri;
+                        },
+                        get emptyImageUri() {
+                            return emptyImageUri;
+                        },
+                        get flowOptioner() {
+                            return flowOptioner;
+                        },
+                        get responseParser() {
+                            return responseParser;
+                        },
+                        get previewUriResolver() {
+                            return previewUriResolver;
                         }
                     };
                 }
