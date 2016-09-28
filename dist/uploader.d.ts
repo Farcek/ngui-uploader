@@ -3,12 +3,18 @@ declare namespace ngui.uploader {
         (modelValue: any, path: string): string;
     }
     interface IUriPreviewResolver {
-        (modelValue: any, path: string, catchIndexer: number): string;
+        (modelValue: any, path: string, cacheIndexer: number): string;
     }
     interface IResponseParser {
         (resp: string): any;
     }
     interface IFlowOptioner {
+        (options: flowjs.IFlowOptions): void;
+    }
+    interface IPreUploadFactory {
+        (...injects: any[]): IPreUpload;
+    }
+    interface IPreUpload extends Function {
         (options: flowjs.IFlowOptions): void;
     }
     interface IUploaderServiceOptions {
@@ -18,14 +24,18 @@ declare namespace ngui.uploader {
         previewUriResolver?: IUriPreviewResolver;
         responseParser?: IResponseParser;
         flowOptioner?: IFlowOptioner;
+        preUpload?: (string | IPreUploadFactory)[];
         onError?: Function;
         onUploadSaccess?: Function;
     }
     class UploaderService {
         options: IUploaderServiceOptions;
-        uploaderConfig: IUploaderConfig;
-        constructor(options: IUploaderServiceOptions, uploaderConfig: IUploaderConfig);
-        cacheIndex: number;
+        configProvider: UploaderConfigProvider;
+        private $injector;
+        constructor(options: IUploaderServiceOptions, configProvider: UploaderConfigProvider, $injector: any);
+        cacheIndexer: number;
+        flowOptioner(flowOptions: flowjs.IFlowOptions): void;
+        preUpload(flowOptions: flowjs.IFlowOptions): void;
         responceParse(responce: string): any;
         previewUri(modelValue: any, path: any): string;
         uploadUriResolve(modelValue: any, path: any, uploadStatic: any): string;
@@ -35,21 +45,15 @@ declare namespace ngui.uploader {
     interface IUploaderServiceFactory {
         (options?: IUploaderServiceOptions): UploaderService;
     }
-    interface IUploaderConfigProvider {
-        setBaseTemplateUrl(uri: string): IUploaderConfigProvider;
-        setBaseUploadingTargetUri(uri: string | Function): IUploaderConfigProvider;
-        setEmptyImageUri(uri: string): IUploaderConfigProvider;
-        setFlowOptioner(optioner: IFlowOptioner): IUploaderConfigProvider;
-        setResponseParser(optioner: IResponseParser): IUploaderConfigProvider;
-        setPreviewUriResolver(resolver: IUriPreviewResolver): IUploaderConfigProvider;
-    }
-    interface IUploaderConfig {
+    class UploaderConfigProvider {
         baseTemplateUrl: string;
-        baseUploadingTargetUri: string;
+        baseUploadingTargetUri: any;
         emptyImageUri: string;
-        flowOptioner?: IFlowOptioner;
-        responseParser?: IResponseParser;
-        previewUriResolver?: IUriPreviewResolver;
+        flowOptioner: IFlowOptioner;
+        preUpload: (string | IPreUploadFactory)[];
+        responseParser: IResponseParser;
+        previewUriResolver: IUriPreviewResolver;
+        $get(): this;
     }
 }
 declare var Flow: any;

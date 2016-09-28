@@ -1,14 +1,21 @@
 namespace ngui.uploader {
+
     export interface IUriResolver {
         (modelValue: any, path: string): string
     }
     export interface IUriPreviewResolver {
-        (modelValue: any, path: string, catchIndexer: number): string
+        (modelValue: any, path: string, cacheIndexer: number): string
     }
     export interface IResponseParser {
         (resp: string): any
     }
     export interface IFlowOptioner {
+        (options: flowjs.IFlowOptions): void
+    }
+    export interface IPreUploadFactory {
+        (...injects: any[]): IPreUpload
+    }
+    export interface IPreUpload extends Function {
         (options: flowjs.IFlowOptions): void
     }
     export interface IUploaderServiceOptions {
@@ -18,39 +25,66 @@ namespace ngui.uploader {
         previewUriResolver?: IUriPreviewResolver
         responseParser?: IResponseParser
         flowOptioner?: IFlowOptioner
+
+        preUpload?: (string | IPreUploadFactory)[];
         onError?: Function
         onUploadSaccess?: Function
     }
+
     export class UploaderService {
-        constructor(public options: IUploaderServiceOptions, public uploaderConfig: IUploaderConfig) {
+        constructor(public options: IUploaderServiceOptions, public configProvider: UploaderConfigProvider, private $injector) {
         }
-        cacheIndex: number = 1;
+
+
+
+        cacheIndexer: number = 1;
+        flowOptioner(flowOptions: flowjs.IFlowOptions) {
+            if (this.configProvider.flowOptioner) {
+                this.configProvider.flowOptioner(flowOptions)
+            }
+
+            if (this.options && this.options.flowOptioner) {
+                this.options.flowOptioner(flowOptions);
+            }
+        }
+        preUpload(flowOptions: flowjs.IFlowOptions) {
+
+            if (this.configProvider.preUpload) {
+                var preLoader = this.$injector.invoke(this.configProvider.preUpload)
+                preLoader(flowOptions);
+            }
+
+            if (this.options && this.options.preUpload) {
+                var preLoader = this.$injector.invoke(this.options.preUpload)
+                preLoader(flowOptions);
+            }
+        }
         responceParse(responce: string): any {
             if (this.options && this.options.responseParser) {
                 return this.options.responseParser(responce);
             }
-            if (this.uploaderConfig && this.uploaderConfig.responseParser) {
-                return this.uploaderConfig.responseParser(responce);
+            if (this.configProvider && this.configProvider.responseParser) {
+                return this.configProvider.responseParser(responce);
             }
             return responce;
         }
         previewUri(modelValue, path) {
 
             if (modelValue) {
-                if (this.options && this.options.previewUriResolver) {                    
-                    let uri = this.options.previewUriResolver(modelValue, path, this.cacheIndex);
+                if (this.options && this.options.previewUriResolver) {
+                    let uri = this.options.previewUriResolver(modelValue, path, this.cacheIndexer);
                     if (uri) return uri;
                 }
 
-                if (this.uploaderConfig && this.uploaderConfig.previewUriResolver) {
-                    let uri = this.uploaderConfig.previewUriResolver(modelValue, path, this.cacheIndex);
+                if (this.configProvider && this.configProvider.previewUriResolver) {
+                    let uri = this.configProvider.previewUriResolver(modelValue, path, this.cacheIndexer);
                     if (uri) return uri;
                 }
 
-                return this.uploaderConfig.baseUploadingTargetUri + '/' + path + '/' + modelValue;
+                return this.configProvider.baseUploadingTargetUri + '/' + path + '/' + modelValue;
             }
 
-            return this.uploaderConfig.emptyImageUri;
+            return this.configProvider.emptyImageUri;
         }
         uploadUriResolve(modelValue, path, uploadStatic) {
             if (this.options && this.options.uploadUriResolver) {
@@ -62,9 +96,9 @@ namespace ngui.uploader {
             }
 
             if (uploadStatic) {
-                return this.uploaderConfig.baseUploadingTargetUri + '/' + path + '/' + modelValue;
+                return this.configProvider.baseUploadingTargetUri + '/' + path + '/' + modelValue;
             } else {
-                return this.uploaderConfig.baseUploadingTargetUri + '/' + path;
+                return this.configProvider.baseUploadingTargetUri + '/' + path;
             }
         }
         onError(err) {
@@ -73,7 +107,7 @@ namespace ngui.uploader {
             }
         }
         onUploadSuccess() {
-            this.cacheIndex++;
+            this.cacheIndexer++;
             if (this.options && this.options.onUploadSaccess) {
                 this.options.onUploadSaccess();
             }
@@ -84,20 +118,21 @@ namespace ngui.uploader {
     }
 
     module UploaderServiceFactory {
-        export function factory(nguiUploaderConfig: IUploaderConfig): IUploaderServiceFactory {
+        export function factory(uploaderConfig: UploaderConfigProvider, $injector): IUploaderServiceFactory {
             return function (options?: IUploaderServiceOptions) {
-                return new UploaderService(options, nguiUploaderConfig);
+                return new UploaderService(options, uploaderConfig, $injector);
             }
         }
-        factory.$inject = ['$nguiUploaderConfig'];
+        factory.$inject = ['$nguiUploaderConfig', '$injector'];
     }
     module UploaderDirective {
 
-        export function factory($nguiUploaderConfig: IUploaderConfig, $nguiUploaderServiceFactory: IUploaderServiceFactory): ng.IDirective {
+        export function factory(configProvider: UploaderConfigProvider, ServiceFactory: IUploaderServiceFactory, $injector): ng.IDirective {
+
             return {
                 require: '?ngModel',
                 templateUrl: function (elem, attrs: any) {
-                    return attrs.templateUrl || $nguiUploaderConfig.baseTemplateUrl + '/uploader.htm';
+                    return attrs.templateUrl || configProvider.baseTemplateUrl + '/uploader.htm';
                 },
                 scope: {
                     uploader: '=nguiUploader',
@@ -108,17 +143,16 @@ namespace ngui.uploader {
                 },
 
                 link: function ($scope, $ele: JQuery, $attr, $ngModel: ng.INgModelController) {
-                    
-                    let uploaderService: UploaderService = $scope.uploader || $nguiUploaderServiceFactory();
+
+                    let uploaderService: UploaderService = $scope.uploader || ServiceFactory();
                     let flowOptions: flowjs.IFlowOptions = {
                         testChunks: false,
                         singleFile: true,
                         fileParameterName: $scope.uploadFieldName || uploaderService.options && uploaderService.options.uploadFieldName || 'file'
                     };
 
-                    if ($nguiUploaderConfig.flowOptioner) {
-                        $nguiUploaderConfig.flowOptioner(flowOptions)
-                    }
+                    uploaderService.flowOptioner(flowOptions);
+
 
 
                     let flow: flowjs.IFlow = new Flow(flowOptions);
@@ -134,6 +168,7 @@ namespace ngui.uploader {
                     flow.on('filesSubmitted', (files: flowjs.IFlowFile[], event) => {
                         let uri = uploaderService.uploadUriResolve($ngModel.$modelValue, $scope.uploadPath, $scope.uploadStatic);
                         if (uri) {
+                            uploaderService.preUpload(flow.opts);
                             flow.opts['target'] = uri;
                             flow.upload();
                         } else {
@@ -151,7 +186,7 @@ namespace ngui.uploader {
                         $scope.$apply();
                     });
                     flow.on('fileError', function (file, message) {
-                        //console.log('fileError', file, message);
+                        
                         $data.uploadError = true;
                         $data.uploadErrorMessage = message;
                         uploaderService.onError(message);
@@ -166,95 +201,34 @@ namespace ngui.uploader {
                 }
             }
         }
-        factory.$inject = ['$nguiUploaderConfig', '$nguiUploaderServiceFactory'];
+        factory.$inject = ['$nguiUploaderConfig', '$nguiUploaderServiceFactory', '$injector'];
 
 
 
     }
 
-    export interface IUploaderConfigProvider {
-        setBaseTemplateUrl(uri: string): IUploaderConfigProvider
-        setBaseUploadingTargetUri(uri: string | Function): IUploaderConfigProvider
-        setEmptyImageUri(uri: string): IUploaderConfigProvider
-        setFlowOptioner(optioner: IFlowOptioner): IUploaderConfigProvider
-        setResponseParser(optioner: IResponseParser): IUploaderConfigProvider
-        setPreviewUriResolver(resolver: IUriPreviewResolver): IUploaderConfigProvider
-    }
-    export interface IUploaderConfig {
-        baseTemplateUrl: string
-        baseUploadingTargetUri: string
-        emptyImageUri: string
-        flowOptioner?: IFlowOptioner
-        responseParser?: IResponseParser
-        previewUriResolver?: IUriPreviewResolver
+
+
+
+    export class UploaderConfigProvider {
+        baseTemplateUrl = "/ngui";
+        baseUploadingTargetUri: any = "/upload";
+        emptyImageUri = "/empty.jpg";
+        flowOptioner: IFlowOptioner = null;
+        preUpload: (string | IPreUploadFactory)[] = null;
+        responseParser: IResponseParser = null;
+        previewUriResolver: IUriPreviewResolver = null;
+
+        $get() {
+            return this;
+        }
     }
 
     angular.module('ngui-uploader', [])
         .directive('nguiUploader', UploaderDirective.factory)
-        //.directive('nguiUploaderInput', UploaderDirectiveInput.factory)
         .factory('$nguiUploaderServiceFactory', UploaderServiceFactory.factory)
-        .provider("$nguiUploaderConfig", function () {
+        .provider('$nguiUploaderConfig', UploaderConfigProvider)
 
-            let baseTemplateUrl = "/ngui";
-            let baseUploadingTargetUri: any = "/upload";
-            let emptyImageUri = "/empty.jpg";
-            let flowOptioner = null;
-            let responseParser = null;
-            let previewUriResolver = null;
-
-            let self = {
-                setBaseTemplateUrl: function (url) {
-                    baseTemplateUrl = url;
-                    return self;
-                },
-                setBaseUploadingTargetUri: function (uri) {
-                    baseUploadingTargetUri = uri;
-                    return self;
-                },
-                setEmptyImageUri: function (uri) {
-                    emptyImageUri = uri;
-                    return self;
-                },
-                setFlowOptioner: function (optioner: IFlowOptioner) {
-                    flowOptioner = optioner;
-                    return self;
-                },
-                setResponseParser: function (parser: IResponseParser) {
-                    responseParser = parser;
-                    return self;
-                },
-                setPreviewUriResolver(resolver: IUriResolver) {
-                    previewUriResolver = resolver;
-                    return self;
-                },
-                $get: function () {
-                    return {
-                        get baseTemplateUrl() {
-                            return baseTemplateUrl;
-                        },
-                        get baseUploadingTargetUri() {
-                            if (typeof (baseUploadingTargetUri) === 'function') {
-                                return baseUploadingTargetUri();
-                            }
-                            return baseUploadingTargetUri;
-                        },
-                        get emptyImageUri() {
-                            return emptyImageUri;
-                        },
-                        get flowOptioner() {
-                            return flowOptioner;
-                        },
-                        get responseParser() {
-                            return responseParser;
-                        },
-                        get previewUriResolver() {
-                            return previewUriResolver;
-                        }
-                    };
-                }
-            };
-            return self;
-        });
 }
 
 declare var Flow: any;

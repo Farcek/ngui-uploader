@@ -2,3 +2,5 @@
 bower_components/*
 typings/*
 
+dist/demo*
+src/demo*

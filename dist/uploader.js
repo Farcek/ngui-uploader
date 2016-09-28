@@ -3,35 +3,54 @@ var ngui;
     var uploader;
     (function (uploader) {
         var UploaderService = (function () {
-            function UploaderService(options, uploaderConfig) {
+            function UploaderService(options, configProvider, $injector) {
                 this.options = options;
-                this.uploaderConfig = uploaderConfig;
-                this.cacheIndex = 1;
+                this.configProvider = configProvider;
+                this.$injector = $injector;
+                this.cacheIndexer = 1;
             }
+            UploaderService.prototype.flowOptioner = function (flowOptions) {
+                if (this.configProvider.flowOptioner) {
+                    this.configProvider.flowOptioner(flowOptions);
+                }
+                if (this.options && this.options.flowOptioner) {
+                    this.options.flowOptioner(flowOptions);
+                }
+            };
+            UploaderService.prototype.preUpload = function (flowOptions) {
+                if (this.configProvider.preUpload) {
+                    var preLoader = this.$injector.invoke(this.configProvider.preUpload);
+                    preLoader(flowOptions);
+                }
+                if (this.options && this.options.preUpload) {
+                    var preLoader = this.$injector.invoke(this.options.preUpload);
+                    preLoader(flowOptions);
+                }
+            };
             UploaderService.prototype.responceParse = function (responce) {
                 if (this.options && this.options.responseParser) {
                     return this.options.responseParser(responce);
                 }
-                if (this.uploaderConfig && this.uploaderConfig.responseParser) {
-                    return this.uploaderConfig.responseParser(responce);
+                if (this.configProvider && this.configProvider.responseParser) {
+                    return this.configProvider.responseParser(responce);
                 }
                 return responce;
             };
             UploaderService.prototype.previewUri = function (modelValue, path) {
                 if (modelValue) {
                     if (this.options && this.options.previewUriResolver) {
-                        var uri = this.options.previewUriResolver(modelValue, path, this.cacheIndex);
+                        var uri = this.options.previewUriResolver(modelValue, path, this.cacheIndexer);
                         if (uri)
                             return uri;
                     }
-                    if (this.uploaderConfig && this.uploaderConfig.previewUriResolver) {
-                        var uri = this.uploaderConfig.previewUriResolver(modelValue, path, this.cacheIndex);
+                    if (this.configProvider && this.configProvider.previewUriResolver) {
+                        var uri = this.configProvider.previewUriResolver(modelValue, path, this.cacheIndexer);
                         if (uri)
                             return uri;
                     }
-                    return this.uploaderConfig.baseUploadingTargetUri + '/' + path + '/' + modelValue;
+                    return this.configProvider.baseUploadingTargetUri + '/' + path + '/' + modelValue;
                 }
-                return this.uploaderConfig.emptyImageUri;
+                return this.configProvider.emptyImageUri;
             };
             UploaderService.prototype.uploadUriResolve = function (modelValue, path, uploadStatic) {
                 if (this.options && this.options.uploadUriResolver) {
@@ -43,10 +62,10 @@ var ngui;
                     return this.options.target;
                 }
                 if (uploadStatic) {
-                    return this.uploaderConfig.baseUploadingTargetUri + '/' + path + '/' + modelValue;
+                    return this.configProvider.baseUploadingTargetUri + '/' + path + '/' + modelValue;
                 }
                 else {
-                    return this.uploaderConfig.baseUploadingTargetUri + '/' + path;
+                    return this.configProvider.baseUploadingTargetUri + '/' + path;
                 }
             };
             UploaderService.prototype.onError = function (err) {
@@ -55,7 +74,7 @@ var ngui;
                 }
             };
             UploaderService.prototype.onUploadSuccess = function () {
-                this.cacheIndex++;
+                this.cacheIndexer++;
                 if (this.options && this.options.onUploadSaccess) {
                     this.options.onUploadSaccess();
                 }
@@ -65,21 +84,21 @@ var ngui;
         uploader.UploaderService = UploaderService;
         var UploaderServiceFactory;
         (function (UploaderServiceFactory) {
-            function factory(nguiUploaderConfig) {
+            function factory(uploaderConfig, $injector) {
                 return function (options) {
-                    return new UploaderService(options, nguiUploaderConfig);
+                    return new UploaderService(options, uploaderConfig, $injector);
                 };
             }
             UploaderServiceFactory.factory = factory;
-            factory.$inject = ['$nguiUploaderConfig'];
+            factory.$inject = ['$nguiUploaderConfig', '$injector'];
         })(UploaderServiceFactory || (UploaderServiceFactory = {}));
         var UploaderDirective;
         (function (UploaderDirective) {
-            function factory($nguiUploaderConfig, $nguiUploaderServiceFactory) {
+            function factory(configProvider, ServiceFactory, $injector) {
                 return {
                     require: '?ngModel',
                     templateUrl: function (elem, attrs) {
-                        return attrs.templateUrl || $nguiUploaderConfig.baseTemplateUrl + '/uploader.htm';
+                        return attrs.templateUrl || configProvider.baseTemplateUrl + '/uploader.htm';
                     },
                     scope: {
                         uploader: '=nguiUploader',
@@ -89,15 +108,13 @@ var ngui;
                         uploadFieldName: '@'
                     },
                     link: function ($scope, $ele, $attr, $ngModel) {
-                        var uploaderService = $scope.uploader || $nguiUploaderServiceFactory();
+                        var uploaderService = $scope.uploader || ServiceFactory();
                         var flowOptions = {
                             testChunks: false,
                             singleFile: true,
                             fileParameterName: $scope.uploadFieldName || uploaderService.options && uploaderService.options.uploadFieldName || 'file'
                         };
-                        if ($nguiUploaderConfig.flowOptioner) {
-                            $nguiUploaderConfig.flowOptioner(flowOptions);
-                        }
+                        uploaderService.flowOptioner(flowOptions);
                         var flow = new Flow(flowOptions);
                         var $data = $scope.$data = {
                             uploadProcess: 0,
@@ -111,6 +128,7 @@ var ngui;
                         flow.on('filesSubmitted', function (files, event) {
                             var uri = uploaderService.uploadUriResolve($ngModel.$modelValue, $scope.uploadPath, $scope.uploadStatic);
                             if (uri) {
+                                uploaderService.preUpload(flow.opts);
                                 flow.opts['target'] = uri;
                                 flow.upload();
                             }
@@ -129,7 +147,6 @@ var ngui;
                             $scope.$apply();
                         });
                         flow.on('fileError', function (file, message) {
-                            //console.log('fileError', file, message);
                             $data.uploadError = true;
                             $data.uploadErrorMessage = message;
                             uploaderService.onError(message);
@@ -143,70 +160,27 @@ var ngui;
                 };
             }
             UploaderDirective.factory = factory;
-            factory.$inject = ['$nguiUploaderConfig', '$nguiUploaderServiceFactory'];
+            factory.$inject = ['$nguiUploaderConfig', '$nguiUploaderServiceFactory', '$injector'];
         })(UploaderDirective || (UploaderDirective = {}));
+        var UploaderConfigProvider = (function () {
+            function UploaderConfigProvider() {
+                this.baseTemplateUrl = "/ngui";
+                this.baseUploadingTargetUri = "/upload";
+                this.emptyImageUri = "/empty.jpg";
+                this.flowOptioner = null;
+                this.preUpload = null;
+                this.responseParser = null;
+                this.previewUriResolver = null;
+            }
+            UploaderConfigProvider.prototype.$get = function () {
+                return this;
+            };
+            return UploaderConfigProvider;
+        }());
+        uploader.UploaderConfigProvider = UploaderConfigProvider;
         angular.module('ngui-uploader', [])
             .directive('nguiUploader', UploaderDirective.factory)
             .factory('$nguiUploaderServiceFactory', UploaderServiceFactory.factory)
-            .provider("$nguiUploaderConfig", function () {
-            var baseTemplateUrl = "/ngui";
-            var baseUploadingTargetUri = "/upload";
-            var emptyImageUri = "/empty.jpg";
-            var flowOptioner = null;
-            var responseParser = null;
-            var previewUriResolver = null;
-            var self = {
-                setBaseTemplateUrl: function (url) {
-                    baseTemplateUrl = url;
-                    return self;
-                },
-                setBaseUploadingTargetUri: function (uri) {
-                    baseUploadingTargetUri = uri;
-                    return self;
-                },
-                setEmptyImageUri: function (uri) {
-                    emptyImageUri = uri;
-                    return self;
-                },
-                setFlowOptioner: function (optioner) {
-                    flowOptioner = optioner;
-                    return self;
-                },
-                setResponseParser: function (parser) {
-                    responseParser = parser;
-                    return self;
-                },
-                setPreviewUriResolver: function (resolver) {
-                    previewUriResolver = resolver;
-                    return self;
-                },
-                $get: function () {
-                    return {
-                        get baseTemplateUrl() {
-                            return baseTemplateUrl;
-                        },
-                        get baseUploadingTargetUri() {
-                            if (typeof (baseUploadingTargetUri) === 'function') {
-                                return baseUploadingTargetUri();
-                            }
-                            return baseUploadingTargetUri;
-                        },
-                        get emptyImageUri() {
-                            return emptyImageUri;
-                        },
-                        get flowOptioner() {
-                            return flowOptioner;
-                        },
-                        get responseParser() {
-                            return responseParser;
-                        },
-                        get previewUriResolver() {
-                            return previewUriResolver;
-                        }
-                    };
-                }
-            };
-            return self;
-        });
+            .provider('$nguiUploaderConfig', UploaderConfigProvider);
     })(uploader = ngui.uploader || (ngui.uploader = {}));
 })(ngui || (ngui = {}));
