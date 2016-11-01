@@ -147,6 +147,7 @@ namespace ngui.uploader {
                     let uploaderService: UploaderService = $scope.uploader || ServiceFactory();
                     let flowOptions: flowjs.IFlowOptions = {
                         testChunks: false,
+                        chunkSize: Number.MAX_VALUE,                        
                         singleFile: true,
                         fileParameterName: $scope.uploadFieldName || uploaderService.options && uploaderService.options.uploadFieldName || 'file'
                     };
@@ -186,7 +187,7 @@ namespace ngui.uploader {
                         $scope.$apply();
                     });
                     flow.on('fileError', function (file, message) {
-                        
+
                         $data.uploadError = true;
                         $data.uploadErrorMessage = message;
                         uploaderService.onError(message);

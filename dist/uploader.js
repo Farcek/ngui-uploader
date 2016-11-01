@@ -111,6 +111,7 @@ var ngui;
                         var uploaderService = $scope.uploader || ServiceFactory();
                         var flowOptions = {
                             testChunks: false,
+                            chunkSize: Number.MAX_VALUE,
                             singleFile: true,
                             fileParameterName: $scope.uploadFieldName || uploaderService.options && uploaderService.options.uploadFieldName || 'file'
                         };
